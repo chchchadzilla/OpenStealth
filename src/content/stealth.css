@@ -1,0 +1,23 @@
+/* OpenStealth — Stealth Content Script Styles */
+/* Minimal — most UI is in the Chrome sidePanel which is already invisible to capture */
+
+[data-openstealth] {
+  /* Isolation from page styles */
+  all: initial;
+  contain: strict;
+  isolation: isolate;
+  z-index: 2147483647;
+  pointer-events: none;
+}
+
+[data-openstealth][data-interactive="true"] {
+  pointer-events: auto;
+}
+
+/* Ensure our elements don't interfere with page layout */
+[data-openstealth-inject] {
+  position: fixed !important;
+  top: 0 !important;
+  right: 0 !important;
+  z-index: 2147483647 !important;
+}

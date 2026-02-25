@@ -1,0 +1,44 @@
+# ─── Secrets & Environment ───
+.env
+.env.*
+*.pem
+*.key
+
+# ─── GitHub Copilot/Prompts config ───
+.github/prompts/
+
+# ─── AI / Spec History ───
+.specstory/
+.github/copilot-instructions.md
+
+# ─── OS Junk ───
+Thumbs.db
+Desktop.ini
+.DS_Store
+ehthumbs.db
+*~
+
+# ─── IDE / Editor ───
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# ─── Node / NPM ───
+node_modules/
+package-lock.json
+yarn.lock
+.pnp.*
+
+# ─── Build Artifacts ───
+dist/
+build/
+*.crx
+*.pem
+*.zip
+
+# ─── Logs ───
+*.log
+npm-debug.log*

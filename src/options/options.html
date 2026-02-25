@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenStealth Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>⚡ OpenStealth Settings</h1>
+      <p class="subtitle">Configure your privacy-first AI assistant</p>
+    </header>
+
+    <div id="save-banner" class="save-banner hidden">
+      ✅ Settings saved successfully!
+    </div>
+
+    <!-- API Configuration -->
+    <section class="section">
+      <h2>🔑 API Configuration</h2>
+      <div class="field">
+        <label for="apiKey">OpenRouter API Key</label>
+        <div class="input-group">
+          <input type="password" id="apiKey" placeholder="sk-or-v1-..." autocomplete="off">
+          <button id="toggleKey" class="btn-icon" title="Show/hide key">👁️</button>
+        </div>
+        <p class="help">Get your key at <a href="https://openrouter.ai/keys" target="_blank">openrouter.ai/keys</a></p>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="model">Text Model</label>
+          <select id="model">
+            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+            <option value="google/gemini-2.5-pro-preview">Gemini 2.5 Pro</option>
+            <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+            <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+            <option value="openai/gpt-4o">GPT-4o</option>
+            <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+            <option value="meta-llama/llama-3.1-405b-instruct">Llama 3.1 405B</option>
+            <option value="deepseek/deepseek-r1">DeepSeek R1</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="visionModel">Vision Model</label>
+          <select id="visionModel">
+            <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+            <option value="google/gemini-2.5-pro-preview">Gemini 2.5 Pro</option>
+            <option value="anthropic/claude-sonnet-4">Claude Sonnet 4</option>
+            <option value="openai/gpt-4o">GPT-4o</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="maxTokens">Max Tokens</label>
+          <input type="number" id="maxTokens" value="4096" min="256" max="32768" step="256">
+        </div>
+        <div class="field">
+          <label for="temperature">Temperature</label>
+          <input type="range" id="temperature" min="0" max="1" step="0.1" value="0.7">
+          <span id="tempValue" class="range-value">0.7</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="customModel">Custom Model ID (optional)</label>
+        <input type="text" id="customModel" placeholder="provider/model-name">
+        <p class="help">Enter a model ID from <a href="https://openrouter.ai/models" target="_blank">openrouter.ai/models</a></p>
+      </div>
+    </section>
+
+    <!-- Auto-Detection Settings -->
+    <section class="section">
+      <h2>🔍 Auto-Detection</h2>
+      <div class="field">
+        <label class="toggle-label">
+          <input type="checkbox" id="autoDetect" checked>
+          <span>Auto-detect page changes</span>
+        </label>
+        <p class="help">Automatically analyzes content when significant changes are detected</p>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="changeThreshold">Change Threshold</label>
+          <input type="range" id="changeThreshold" min="0.1" max="0.8" step="0.05" value="0.3">
+          <span id="thresholdValue" class="range-value">30%</span>
+          <p class="help">How much content must change to trigger analysis</p>
+        </div>
+        <div class="field">
+          <label for="debounceMs">Debounce (ms)</label>
+          <input type="number" id="debounceMs" value="2000" min="500" max="10000" step="250">
+          <p class="help">Wait time after last change before analyzing</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Human Simulation -->
+    <section class="section">
+      <h2>🤖 Human Simulation</h2>
+      <p class="section-desc">Configure how the AI interacts with pages when browser control is enabled</p>
+
+      <div class="field">
+        <label for="typingSpeed">Typing Speed Preset</label>
+        <select id="typingSpeed">
+          <option value="slow">Slow (25 WPM) — careful typer</option>
+          <option value="medium" selected>Medium (45 WPM) — average</option>
+          <option value="fast">Fast (70 WPM) — proficient</option>
+          <option value="custom">Custom</option>
+        </select>
+      </div>
+
+      <div id="customSpeedFields" class="hidden">
+        <div class="field-row">
+          <div class="field">
+            <label for="typingWPM">Words Per Minute</label>
+            <input type="number" id="typingWPM" value="45" min="10" max="120">
+          </div>
+          <div class="field">
+            <label for="typoRate">Typo Rate</label>
+            <input type="range" id="typoRate" min="0" max="0.15" step="0.005" value="0.04">
+            <span id="typoValue" class="range-value">4%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="mouseJitter">Mouse Jitter (px)</label>
+          <input type="range" id="mouseJitter" min="0" max="10" step="1" value="3">
+          <span id="jitterValue" class="range-value">3px</span>
+        </div>
+        <div class="field">
+          <label for="mouseSpeed">Mouse Speed</label>
+          <select id="mouseSpeed">
+            <option value="slow">Slow — deliberate movements</option>
+            <option value="medium" selected>Medium — natural</option>
+            <option value="fast">Fast — quick but not robotic</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Permissions & Privacy -->
+    <section class="section">
+      <h2>🔒 Permissions & Privacy</h2>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input type="checkbox" id="enableToolCalls">
+          <span>Enable Tool Calls</span>
+        </label>
+        <p class="help">Allow the AI to suggest actions (with your approval)</p>
+      </div>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input type="checkbox" id="enableBrowserControl">
+          <span>Enable Browser Control</span>
+        </label>
+        <p class="help">Allow the AI to type and click on pages (always asks permission first)</p>
+      </div>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input type="checkbox" id="enableMCP">
+          <span>Enable MCP Servers</span>
+        </label>
+        <p class="help">Connect to Model Context Protocol servers for extended capabilities</p>
+      </div>
+
+      <div id="mcpConfig" class="hidden">
+        <div class="field">
+          <label for="mcpServers">MCP Server URLs (one per line)</label>
+          <textarea id="mcpServers" rows="4" placeholder="http://localhost:3000/mcp&#10;https://my-mcp-server.com/api"></textarea>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="stealthLevel">Stealth Level</label>
+        <select id="stealthLevel">
+          <option value="low">Low — basic protection</option>
+          <option value="medium">Medium — hide from common capture</option>
+          <option value="high" selected>High — evade proctoring tools</option>
+          <option value="paranoid">Paranoid — maximum evasion</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Custom System Prompt -->
+    <section class="section">
+      <h2>💬 Custom System Prompt</h2>
+      <div class="field">
+        <label for="systemPrompt">System Prompt (optional override)</label>
+        <textarea id="systemPrompt" rows="6" placeholder="Leave empty for default. You can customize how the AI behaves..."></textarea>
+        <p class="help">Overrides the default system prompt. Leave empty to use the built-in prompt.</p>
+      </div>
+    </section>
+
+    <!-- Actions -->
+    <div class="actions">
+      <button id="btnSave" class="btn btn-primary">💾 Save Settings</button>
+      <button id="btnReset" class="btn btn-secondary">🔄 Reset to Defaults</button>
+      <button id="btnTest" class="btn btn-secondary">🧪 Test API Connection</button>
+    </div>
+
+    <div id="testResult" class="test-result hidden"></div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

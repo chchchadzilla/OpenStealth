@@ -1,0 +1,61 @@
+{
+  "manifest_version": 3,
+  "name": "OpenStealth",
+  "version": "1.0.0",
+  "description": "Privacy-first AI sidebar assistant — your screen, your rules.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "sidePanel",
+    "tabs",
+    "contextMenus",
+    "offscreen"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+  "side_panel": {
+    "default_path": "src/sidebar/sidebar.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": [
+        "src/content/interaction-tracker.js",
+        "src/content/page-monitor.js",
+        "src/content/stealth-overlay.js",
+        "src/content/content-main.js"
+      ],
+      "css": [
+        "src/content/stealth.css"
+      ],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  "options_page": "src/options/options.html",
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["src/sidebar/*", "assets/*"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenStealth</title>
+  <link rel="stylesheet" href="sidebar.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Header -->
+    <header id="header">
+      <div class="header-left">
+        <span class="logo">⚡</span>
+        <span class="title">OpenStealth</span>
+      </div>
+      <div class="header-right">
+        <button id="btn-screenshot" class="icon-btn" title="Include screenshot with next query">
+          📷
+        </button>
+        <button id="btn-auto-toggle" class="icon-btn active" title="Auto-detect changes">
+          🔄
+        </button>
+        <button id="btn-settings" class="icon-btn" title="Settings">
+          ⚙️
+        </button>
+        <button id="btn-clear" class="icon-btn" title="Clear conversation">
+          🗑️
+        </button>
+      </div>
+    </header>
+
+    <!-- Status Bar -->
+    <div id="status-bar">
+      <span id="status-indicator" class="status-dot"></span>
+      <span id="status-text">Ready</span>
+      <span id="model-name" class="model-badge"></span>
+    </div>
+
+    <!-- Chat Area -->
+    <div id="chat-container">
+      <div id="chat-messages">
+        <div class="message system">
+          <div class="message-content">
+            <p>👋 <strong>OpenStealth</strong> is active.</p>
+            <p class="hint">I'll monitor the page for changes and provide AI-powered insights. 
+            You can also ask me anything directly.</p>
+            <p class="hint">Configure your OpenRouter API key in ⚙️ Settings to get started.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tool Calls Panel (collapsible) -->
+    <div id="tool-panel" class="hidden">
+      <div class="tool-header" id="tool-header">
+        <span>🔧 Tool Calls</span>
+        <button id="btn-approve-tools" class="btn-small btn-green">Approve All</button>
+        <button id="btn-deny-tools" class="btn-small btn-red">Deny</button>
+      </div>
+      <div id="tool-content"></div>
+    </div>
+
+    <!-- Input Area -->
+    <div id="input-area">
+      <div id="context-indicator" class="hidden">
+        <span id="context-type"></span>
+        <span id="context-preview"></span>
+        <button id="btn-clear-context" class="icon-btn-sm">✕</button>
+      </div>
+      <div class="input-row">
+        <textarea id="user-input" placeholder="Ask anything... (Shift+Enter for new line)" 
+                  rows="1" autofocus></textarea>
+        <button id="btn-send" class="send-btn" title="Send (Enter)">
+          <span class="send-icon">▶</span>
+        </button>
+      </div>
+      <div class="input-hints">
+        <label class="checkbox-hint">
+          <input type="checkbox" id="chk-screenshot"> 📷 Screenshot
+        </label>
+        <label class="checkbox-hint">
+          <input type="checkbox" id="chk-page-context" checked> 📄 Page context
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <script src="sidebar.js" type="module"></script>
+</body>
+</html>
