@@ -250,17 +250,21 @@
   document.addEventListener('keydown', (e) => {
     if (e.ctrlKey && e.shiftKey && e.key === 'S') {
       e.stopImmediatePropagation();
-      chrome.runtime.sendMessage({ type: 'TOGGLE_SIDEBAR' }).catch(() => {});
+      try {
+        chrome.runtime.sendMessage({ type: 'TOGGLE_SIDEBAR' }).catch(() => {});
+      } catch (e) { /* context invalidated — ignore */ }
     }
   }, true); // Capture phase — fires before proctoring listeners
 
   // ─── Periodic Stealth Check ───────────────────────────────────────────────
-  setInterval(() => {
+  const stealthCheckInterval = setInterval(() => {
     // Re-hide any of our elements that might have been made visible
     // by DOM manipulation from other extensions
-    document.querySelectorAll(`[${ATTR_MARKER}][style*="display: block"]`).forEach(el => {
-      el.style.setProperty('display', 'none', 'important');
-    });
+    try {
+      document.querySelectorAll(`[${ATTR_MARKER}][style*="display: block"]`).forEach(el => {
+        el.style.setProperty('display', 'none', 'important');
+      });
+    } catch (e) { /* swallow */ }
   }, 5000);
 
   // ─── Expose via Symbol (non-enumerable, non-discoverable) ────────────────
@@ -291,10 +295,12 @@
   const proctors = detectProctoringEnvironment();
   if (proctors.length > 0) {
     // DON'T console.log — use runtime messaging only
-    chrome.runtime.sendMessage({
-      type: 'PROCTOR_DETECTED',
-      proctors,
-    }).catch(() => {});
+    try {
+      chrome.runtime.sendMessage({
+        type: 'PROCTOR_DETECTED',
+        proctors,
+      }).catch(() => {});
+    } catch (e) { /* context invalidated — ignore */ }
 
     // Auto-enable paranoid mode if proctoring detected
     enableParanoidMode();

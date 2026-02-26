@@ -9,6 +9,35 @@
 (() => {
   'use strict';
 
+  // ─── Context Invalidation Guard ──────────────────────────────────────────
+  let contextDead = false;
+
+  function safeSendMessage(msg) {
+    if (contextDead) return Promise.resolve();
+    try {
+      return chrome.runtime.sendMessage(msg).catch(handleContextError);
+    } catch (e) {
+      handleContextError(e);
+      return Promise.resolve();
+    }
+  }
+
+  function handleContextError(e) {
+    if (e?.message?.includes?.('Extension context invalidated') ||
+        e?.message?.includes?.('context invalidated')) {
+      contextDead = true;
+      cleanupAll();
+    }
+  }
+
+  function cleanupAll() {
+    contextDead = true;
+    isEnabled = false;
+    if (observer) { try { observer.disconnect(); } catch (e) { /* swallow */ } observer = null; }
+    clearTimeout(debounceTimer);
+    clearTimeout(batchTimer);
+  }
+
   // ─── Config ──────────────────────────────────────────────────────────────
   const CONFIG = {
     DEBOUNCE_MS: 1000,
@@ -226,7 +255,7 @@
     if (observer) observer.disconnect();
 
     observer = new MutationObserver((mutations) => {
-      if (!isEnabled) return;
+      if (!isEnabled || contextDead) return;
 
       // Filter out noise
       const meaningful = mutations.filter(m => {
@@ -235,8 +264,10 @@
           return false;
         }
         // Ignore our own injected elements (uses dynamic marker from stealth-overlay)
-        const marker = chrome.runtime?.__stealthMarker;
-        if (marker && m.target.closest?.(`[${marker}]`)) return false;
+        try {
+          const marker = chrome.runtime?.__stealthMarker;
+          if (marker && m.target.closest?.(`[${marker}]`)) return false;
+        } catch (e) { /* context may be dead */ }
         // Ignore hidden elements
         if (m.target.nodeType === 1) {
           const style = window.getComputedStyle(m.target);
@@ -274,6 +305,7 @@
   }
 
   function checkForChanges() {
+    if (contextDead) return;
     const newSnapshot = takeSnapshot();
     const changes = detectSignificantChange(lastSnapshot, newSnapshot);
 
@@ -290,20 +322,20 @@
         activeSlide: newSnapshot.activeSlide,
         images: newSnapshot.images.slice(0, 10),
         meta: newSnapshot.meta,
-        userInteraction: chrome.runtime.__lastInteraction || null,
+        userInteraction: (() => { try { return chrome.runtime.__lastInteraction || null; } catch (e) { return null; } })(),
       };
 
       // Send to background
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         type: 'SIGNIFICANT_CHANGE',
         context,
-      }).catch(() => {});
+      });
 
       // Also notify sidebar
-      chrome.runtime.sendMessage({
+      safeSendMessage({
         type: 'AUTO_CHANGE_DETECTED',
         description,
-      }).catch(() => {});
+      });
     }
 
     lastSnapshot = newSnapshot;
@@ -340,25 +372,28 @@
   }
 
   // ─── Message Handler ──────────────────────────────────────────────────────
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'GET_PAGE_CONTEXT') {
-      const snapshot = takeSnapshot();
-      sendResponse({
-        text: snapshot?.text?.substring(0, 8000),
-        images: snapshot?.images?.slice(0, 10),
-        meta: snapshot?.meta,
-        activeSlide: snapshot?.activeSlide,
-        interaction: chrome.runtime.__lastInteraction || null,
-      });
-      return true;
-    }
+  try {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (contextDead) return;
+      if (msg.type === 'GET_PAGE_CONTEXT') {
+        const snapshot = takeSnapshot();
+        sendResponse({
+          text: snapshot?.text?.substring(0, 8000),
+          images: snapshot?.images?.slice(0, 10),
+          meta: snapshot?.meta,
+          activeSlide: snapshot?.activeSlide,
+          interaction: (() => { try { return chrome.runtime.__lastInteraction || null; } catch (e) { return null; } })(),
+        });
+        return true;
+      }
 
-    if (msg.type === 'TOGGLE_MONITOR') {
-      isEnabled = msg.enabled;
-      sendResponse({ enabled: isEnabled });
-      return true;
-    }
-  });
+      if (msg.type === 'TOGGLE_MONITOR') {
+        isEnabled = msg.enabled;
+        sendResponse({ enabled: isEnabled });
+        return true;
+      }
+    });
+  } catch (e) { handleContextError(e); }
 
   // ─── Bootstrap ────────────────────────────────────────────────────────────
   function boot() {

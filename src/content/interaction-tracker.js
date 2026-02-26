@@ -7,6 +7,52 @@
 (() => {
   'use strict';
 
+  // ─── Context Invalidation Guard ──────────────────────────────────────────
+  let contextDead = false;
+
+  function isContextValid() {
+    try {
+      return !!chrome.runtime?.id;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function safeSendMessage(msg) {
+    if (contextDead) return Promise.resolve();
+    try {
+      return chrome.runtime.sendMessage(msg).catch(handleContextError);
+    } catch (e) {
+      handleContextError(e);
+      return Promise.resolve();
+    }
+  }
+
+  function handleContextError(e) {
+    if (e?.message?.includes?.('Extension context invalidated') ||
+        e?.message?.includes?.('context invalidated')) {
+      contextDead = true;
+      cleanup();
+    }
+  }
+
+  // Event listener references for cleanup
+  const listeners = [];
+  function addTrackedListener(target, event, handler, opts) {
+    target.addEventListener(event, handler, opts);
+    listeners.push({ target, event, handler, opts });
+  }
+
+  function cleanup() {
+    contextDead = true;
+    clearTimeout(typingTimer);
+    clearTimeout(hoverTimer);
+    for (const { target, event, handler, opts } of listeners) {
+      try { target.removeEventListener(event, handler, opts); } catch (e) { /* swallow */ }
+    }
+    listeners.length = 0;
+  }
+
   // ─── Stealth Helper ──────────────────────────────────────────────────────
   // Check if an element belongs to us using the dynamic marker from stealth-overlay
   function isOurElement(el) {
@@ -118,7 +164,8 @@
   // ─── Event Handlers ──────────────────────────────────────────────────────
 
   // Click
-  document.addEventListener('click', (e) => {
+  const onClickCapture = (e) => {
+    if (contextDead) return;
     const el = e.target;
     if (isOurElement(el)) return;
 
@@ -131,10 +178,12 @@
       position: { x: e.clientX, y: e.clientY },
     };
     broadcastInteraction();
-  }, true);
+  };
+  addTrackedListener(document, 'click', onClickCapture, true);
 
   // Text Selection
-  document.addEventListener('selectionchange', () => {
+  const onSelectionChange = () => {
+    if (contextDead) return;
     const selection = window.getSelection();
     const text = selection?.toString()?.trim();
     if (!text || text.length < 3) return;
@@ -152,10 +201,12 @@
       position: { x: 0, y: 0 },
     };
     broadcastInteraction();
-  });
+  };
+  addTrackedListener(document, 'selectionchange', onSelectionChange);
 
   // Focus (entering input fields)
-  document.addEventListener('focusin', (e) => {
+  const onFocusInCapture = (e) => {
+    if (contextDead) return;
     const el = e.target;
     if (isOurElement(el)) return;
     if (!el.tagName) return;
@@ -172,16 +223,19 @@
       position: { x: 0, y: 0 },
     };
     broadcastInteraction();
-  }, true);
+  };
+  addTrackedListener(document, 'focusin', onFocusInCapture, true);
 
   // Typing in inputs
   let typingTimer = null;
-  document.addEventListener('input', (e) => {
+  const onInputCapture = (e) => {
+    if (contextDead) return;
     const el = e.target;
     if (isOurElement(el)) return;
 
     clearTimeout(typingTimer);
     typingTimer = setTimeout(() => {
+      if (contextDead) return;
       lastInteraction = {
         type: 'typing',
         element: el,
@@ -192,11 +246,13 @@
       };
       broadcastInteraction();
     }, 800); // Debounce typing
-  }, true);
+  };
+  addTrackedListener(document, 'input', onInputCapture, true);
 
   // Mouse hover (for images etc)
   let hoverTimer = null;
-  document.addEventListener('mouseover', (e) => {
+  const onMouseOverCapture = (e) => {
+    if (contextDead) return;
     const el = e.target;
     if (isOurElement(el)) return;
 
@@ -209,6 +265,7 @@
 
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
+      if (contextDead) return;
       lastInteraction = {
         type: 'hover',
         element: el,
@@ -222,10 +279,12 @@
         chrome.runtime.__lastInteraction = serializeInteraction(lastInteraction);
       } catch (e) { /* swallow */ }
     }, 1000); // Only if they hover for 1s
-  }, true);
+  };
+  addTrackedListener(document, 'mouseover', onMouseOverCapture, true);
 
   // ─── Broadcast ────────────────────────────────────────────────────────────
   function broadcastInteraction() {
+    if (contextDead) return;
     const serialized = serializeInteraction(lastInteraction);
     
     // Store on chrome.runtime (extension-only, invisible to page scripts)
@@ -233,10 +292,10 @@
       chrome.runtime.__lastInteraction = serialized;
     } catch (e) { /* swallow */ }
 
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       type: 'USER_INTERACTION',
       interaction: serialized,
-    }).catch(() => {});
+    });
   }
 
   function serializeInteraction(interaction) {

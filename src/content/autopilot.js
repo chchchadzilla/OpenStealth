@@ -14,6 +14,37 @@
 (() => {
   'use strict';
 
+  // ─── Context Invalidation Guard ──────────────────────────────────────────
+  let contextDead = false;
+
+  function safeSendMessage(msg) {
+    if (contextDead) return Promise.resolve();
+    try {
+      return chrome.runtime.sendMessage(msg).catch(handleContextError);
+    } catch (e) {
+      handleContextError(e);
+      return Promise.resolve();
+    }
+  }
+
+  function handleContextError(e) {
+    if (e?.message?.includes?.('Extension context invalidated') ||
+        e?.message?.includes?.('context invalidated')) {
+      contextDead = true;
+      cleanup();
+    }
+  }
+
+  function cleanup() {
+    contextDead = true;
+    enabled = false;
+    if (intervalId) {
+      clearInterval(intervalId);
+      intervalId = null;
+    }
+    try { document.removeEventListener('selectionchange', onSelectionChange); } catch (e) { /* swallow */ }
+  }
+
   // ─── State ───────────────────────────────────────────────────────────────
   let enabled = false;
   let intervalId = null;
@@ -27,8 +58,8 @@
   // ─── Selection Watcher ───────────────────────────────────────────────────
   // Listen for text selections passively — no clicks on our extension needed.
   // When the user highlights text, that's the implicit signal of intent.
-  document.addEventListener('selectionchange', () => {
-    if (!enabled) return;
+  const onSelectionChange = () => {
+    if (!enabled || contextDead) return;
 
     const sel = document.getSelection();
     const text = sel?.toString?.()?.trim();
@@ -56,7 +87,8 @@
     if (selectionHistory.length > MAX_SELECTION_HISTORY) {
       selectionHistory.shift();
     }
-  }, { passive: true });
+  };
+  document.addEventListener('selectionchange', onSelectionChange, { passive: true });
 
   // ─── Find nearby question text (reused pattern from interaction-tracker) ─
   function findNearbyQuestion(el) {
@@ -125,7 +157,7 @@
 
   // ─── Tick: The Core Auto-Pilot Loop ──────────────────────────────────────
   function tick() {
-    if (!enabled) return;
+    if (!enabled || contextDead) return;
 
     const pageText = getVisibleText();
     const pageHash = simpleHash(pageText);
@@ -144,7 +176,7 @@
 
     // Always send the tick — let the service worker decide what to do.
     // The sidebar needs ticks to update the countdown and show responses.
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       type: 'AUTOPILOT_TICK',
       data: {
         pageText: pageText.substring(0, 4000),
@@ -155,7 +187,7 @@
         currentSelection: lastSelectionText || null,
         timestamp: Date.now(),
       }
-    }).catch(() => { /* sidebar/sw not listening, ignore */ });
+    });
   }
 
   // ─── Start / Stop ────────────────────────────────────────────────────────
@@ -177,29 +209,35 @@
   }
 
   // ─── Message Listener ────────────────────────────────────────────────────
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'AUTOPILOT_START') {
-      start(msg.intervalSec || 30);
-      sendResponse({ enabled: true });
-      return true;
-    }
-    if (msg.type === 'AUTOPILOT_STOP') {
-      stop();
-      sendResponse({ enabled: false });
-      return true;
-    }
-    if (msg.type === 'AUTOPILOT_STATUS') {
-      sendResponse({ enabled, intervalSec, selectionsTracked: selectionHistory.length });
-      return true;
-    }
-  });
+  try {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (contextDead) return;
+      if (msg.type === 'AUTOPILOT_START') {
+        start(msg.intervalSec || 30);
+        sendResponse({ enabled: true });
+        return true;
+      }
+      if (msg.type === 'AUTOPILOT_STOP') {
+        stop();
+        sendResponse({ enabled: false });
+        return true;
+      }
+      if (msg.type === 'AUTOPILOT_STATUS') {
+        sendResponse({ enabled, intervalSec, selectionsTracked: selectionHistory.length });
+        return true;
+      }
+    });
+  } catch (e) { handleContextError(e); }
 
   // ─── Auto-start if previously enabled ────────────────────────────────────
-  chrome.storage?.local?.get?.('settings').then(({ settings }) => {
-    if (settings?.autopilotEnabled) {
-      start(settings.autopilotIntervalSec || 30);
-    }
-  }).catch(() => {});
+  try {
+    chrome.storage?.local?.get?.('settings').then(({ settings }) => {
+      if (contextDead) return;
+      if (settings?.autopilotEnabled) {
+        start(settings.autopilotIntervalSec || 30);
+      }
+    }).catch(() => {});
+  } catch (e) { handleContextError(e); }
 
   // NO console.log — complete radio silence
 })();

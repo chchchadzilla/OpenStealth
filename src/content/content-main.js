@@ -7,6 +7,16 @@
 (() => {
   'use strict';
 
+  // ─── Context Invalidation Guard ──────────────────────────────────────────
+  let contextDead = false;
+
+  function handleContextError(e) {
+    if (e?.message?.includes?.('Extension context invalidated') ||
+        e?.message?.includes?.('context invalidated')) {
+      contextDead = true;
+    }
+  }
+
   // ─── Human Simulation Engine ──────────────────────────────────────────────
   const HumanSim = {
     
@@ -238,32 +248,40 @@
   };
 
   // ─── Message Handler ──────────────────────────────────────────────────────
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    if (msg.type === 'EXECUTE_HUMAN_ACTION') {
-      executeAction(msg.action, msg.params, msg.settings)
-        .then(result => sendResponse(result))
-        .catch(err => sendResponse({ error: err.message }));
-      return true;
-    }
+  try {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (contextDead) return;
 
-    if (msg.type === 'GET_FOCUSED_CONTEXT') {
-      // Access interaction data via chrome.runtime (extension-only channel)
-      const interaction = chrome.runtime.__lastInteraction || null;
+      if (msg.type === 'EXECUTE_HUMAN_ACTION') {
+        executeAction(msg.action, msg.params, msg.settings)
+          .then(result => sendResponse(result))
+          .catch(err => sendResponse({ error: err.message }));
+        return true;
+      }
 
-      // Access page monitor via chrome.runtime
-      const monitorRef = chrome.runtime.__pageMonitor;
-      const snapshot = monitorRef?.takeSnapshot?.();
+      if (msg.type === 'GET_FOCUSED_CONTEXT') {
+        // Access interaction data via chrome.runtime (extension-only channel)
+        let interaction = null;
+        try { interaction = chrome.runtime.__lastInteraction || null; } catch (e) { /* swallow */ }
 
-      sendResponse({
-        interaction,
-        pageText: snapshot?.text?.substring(0, 5000),
-        images: snapshot?.images?.slice(0, 10),
-        meta: snapshot?.meta,
-        activeSlide: snapshot?.activeSlide,
-      });
-      return true;
-    }
-  });
+        // Access page monitor via chrome.runtime
+        let snapshot = null;
+        try {
+          const monitorRef = chrome.runtime.__pageMonitor;
+          snapshot = monitorRef?.takeSnapshot?.();
+        } catch (e) { /* swallow */ }
+
+        sendResponse({
+          interaction,
+          pageText: snapshot?.text?.substring(0, 5000),
+          images: snapshot?.images?.slice(0, 10),
+          meta: snapshot?.meta,
+          activeSlide: snapshot?.activeSlide,
+        });
+        return true;
+      }
+    });
+  } catch (e) { handleContextError(e); }
 
   async function executeAction(action, params, settings) {
     switch (action) {

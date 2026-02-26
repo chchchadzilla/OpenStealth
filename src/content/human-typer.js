@@ -11,6 +11,31 @@
 (() => {
   'use strict';
 
+  // ─── Context Invalidation Guard ──────────────────────────────────────────
+  let contextDead = false;
+
+  function safeSendMessage(msg) {
+    if (contextDead) return Promise.resolve();
+    try {
+      return chrome.runtime.sendMessage(msg).catch(handleContextError);
+    } catch (e) {
+      handleContextError(e);
+      return Promise.resolve();
+    }
+  }
+
+  function handleContextError(e) {
+    if (e?.message?.includes?.('Extension context invalidated') ||
+        e?.message?.includes?.('context invalidated')) {
+      contextDead = true;
+      // Abort any in-progress typing silently
+      if (abortController) {
+        try { abortController.abort(); } catch (e) { /* swallow */ }
+      }
+      isTyping = false;
+    }
+  }
+
   // ─── Adjacent-key typo map ────────────────────────────────────────────────
   const TYPO_MAP = {
     'a': ['s','q','w','z'],     'b': ['v','n','g','h'],
@@ -218,10 +243,10 @@
     isTyping = false;
 
     // Notify sidebar
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       type: 'HUMAN_TYPE_STOPPED',
       reason,
-    }).catch(() => {});
+    });
   }
 
   // ─── Core Typing Engine ───────────────────────────────────────────────────
@@ -385,16 +410,16 @@
       // Finished successfully
       if (isTyping) {
         isTyping = false;
-        chrome.runtime.sendMessage({
+        safeSendMessage({
           type: 'HUMAN_TYPE_COMPLETE',
-        }).catch(() => {});
+        });
       }
     } catch (err) {
       if (err.message !== 'aborted') {
-        chrome.runtime.sendMessage({
+        safeSendMessage({
           type: 'HUMAN_TYPE_ERROR',
           error: err.message,
-        }).catch(() => {});
+        });
       }
       // 'aborted' means user takeover — already handled
     } finally {
@@ -406,9 +431,11 @@
   }
 
   // ─── Message Listener ─────────────────────────────────────────────────────
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  try {
+    chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+      if (contextDead) return;
 
-    if (msg.type === 'HUMAN_TYPE_START') {
+      if (msg.type === 'HUMAN_TYPE_START') {
       // Try activeElement first (if user managed to keep focus on page),
       // then fall back to last tracked input element.
       let el = document.activeElement;
@@ -452,5 +479,6 @@
       return true;
     }
   });
+  } catch (e) { handleContextError(e); }
 
 })();
