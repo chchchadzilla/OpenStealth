@@ -494,38 +494,62 @@ btnTypeIt.addEventListener('click', () => {
   typeItText.textContent = 'Place your cursor in the target field, then click ▶ Start';
 });
 
-btnTypeStart.addEventListener('click', async () => {
+let typeStartCountdownId = null; // Track the countdown so cancel can clear it
+
+btnTypeStart.addEventListener('click', () => {
   if (!pendingTypeText) return;
 
-  // Send the text to the content script to start typing
+  // Start a 5-second countdown so the user can click into the target field
   btnTypeStart.classList.add('hidden');
   btnTypeStop.classList.remove('hidden');
-  typeItIcon.textContent = '⌨️';
-  typeItText.textContent = 'Typing...';
   isHumanTyping = true;
 
-  try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id) throw new Error('No active tab');
+  let remaining = 5;
+  typeItIcon.textContent = '🖱️';
+  typeItText.textContent = `Click into target field… typing in ${remaining}s`;
 
-    const result = await chrome.tabs.sendMessage(tab.id, {
-      type: 'HUMAN_TYPE_START',
-      text: pendingTypeText,
-    });
+  typeStartCountdownId = setInterval(async () => {
+    remaining--;
+    if (remaining > 0) {
+      typeItText.textContent = `Click into target field… typing in ${remaining}s`;
+      return;
+    }
 
-    if (result?.error) {
+    // Countdown done — clear interval, send the message
+    clearInterval(typeStartCountdownId);
+    typeStartCountdownId = null;
+
+    typeItIcon.textContent = '⌨️';
+    typeItText.textContent = 'Typing...';
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('No active tab');
+
+      const result = await chrome.tabs.sendMessage(tab.id, {
+        type: 'HUMAN_TYPE_START',
+        text: pendingTypeText,
+      });
+
+      if (result?.error) {
+        typeItIcon.textContent = '⚠️';
+        typeItText.textContent = result.error;
+        resetTypeItBar(3000);
+      }
+    } catch (err) {
       typeItIcon.textContent = '⚠️';
-      typeItText.textContent = result.error;
+      typeItText.textContent = 'Error: ' + (err.message || 'Could not reach page');
       resetTypeItBar(3000);
     }
-  } catch (err) {
-    typeItIcon.textContent = '⚠️';
-    typeItText.textContent = 'Error: ' + (err.message || 'Could not reach page');
-    resetTypeItBar(3000);
-  }
+  }, 1000);
 });
 
 btnTypeStop.addEventListener('click', async () => {
+  // Clear the pre-typing countdown if it's still running
+  if (typeStartCountdownId) {
+    clearInterval(typeStartCountdownId);
+    typeStartCountdownId = null;
+  }
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id) {
@@ -540,6 +564,11 @@ btnTypeStop.addEventListener('click', async () => {
 });
 
 btnTypeCancel.addEventListener('click', () => {
+  // Clear the pre-typing countdown if it's still running
+  if (typeStartCountdownId) {
+    clearInterval(typeStartCountdownId);
+    typeStartCountdownId = null;
+  }
   if (isHumanTyping) {
     // Also stop typing on the page
     btnTypeStop.click();
@@ -553,6 +582,10 @@ btnTypeCancel.addEventListener('click', () => {
 function resetTypeItBar(delayMs) {
   pendingTypeText = null;
   isHumanTyping = false;
+  if (typeStartCountdownId) {
+    clearInterval(typeStartCountdownId);
+    typeStartCountdownId = null;
+  }
   if (delayMs) {
     setTimeout(() => {
       typeItBar.classList.add('hidden');
