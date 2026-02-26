@@ -443,7 +443,17 @@ btnScreenshot.addEventListener('click', async () => {
 
 // ─── Type-It: Text Selection Detection ──────────────────────────────────────
 // When the user highlights text inside an AI response, show the Type-It bar.
+let selectionDebounceId = null;
+
 document.addEventListener('selectionchange', () => {
+  // Debounce to prevent flicker from rapid selection changes / layout reflows
+  clearTimeout(selectionDebounceId);
+  selectionDebounceId = setTimeout(() => {
+    handleSelectionChange();
+  }, 150);
+});
+
+function handleSelectionChange() {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed || isHumanTyping) return;
 
@@ -459,7 +469,8 @@ document.addEventListener('selectionchange', () => {
   // Walk up from anchor/focus nodes to find .message.assistant .message-content
   // Text nodes don't have .closest(), so always start from the parent element.
   function findAssistantContent(node) {
-    const el = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    if (!node) return null;
+    const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
     return el?.closest?.('.message.assistant .message-content') || null;
   }
 
@@ -478,7 +489,7 @@ document.addEventListener('selectionchange', () => {
     // Store for later
     typeItBar.dataset.selectedText = text;
   }
-});
+}
 
 btnTypeIt.addEventListener('click', () => {
   const text = typeItBar.dataset.selectedText;

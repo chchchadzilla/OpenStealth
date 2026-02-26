@@ -285,7 +285,12 @@ async function handleSidebarQuery(message) {
           quality: 80,
         });
       } catch (e) {
-        // Silent fail — screenshot not critical
+        // Notify sidebar that screenshot capture failed
+        broadcastToSidebar({
+          type: 'LLM_TOKEN',
+          token: '',
+          partial: '⚠️ Screenshot capture failed — analyzing text only.\n\n',
+        });
       }
     }
 
@@ -303,8 +308,13 @@ async function handleSidebarQuery(message) {
       }
     }
 
+    // If a screenshot was requested and captured, prepend context to the query
+    const effectiveQuery = (message.includeScreenshot && imageData)
+      ? `[A screenshot of the current page is attached. Please analyze both the screenshot and the text.]\n\n${message.query}`
+      : message.query;
+
     const messages = promptBuilder.buildMessages(
-      message.query,
+      effectiveQuery,
       conversationHistory,
       imageData,
       pageContext
@@ -369,13 +379,15 @@ async function executeHumanAction(message, sender) {
 
 // ─── Auto-Pilot Toggle ──────────────────────────────────────────────────────
 async function toggleAutopilot(enabled, intervalSec) {
-  autopilotEnabled = enabled;
-  await loadSettings();
+  // Persist FIRST so loadSettings reads the correct value
+  const { settings } = await chrome.storage.local.get('settings');
+  const updated = settings || {};
+  updated.autopilotEnabled = enabled;
+  if (intervalSec) updated.autopilotIntervalSec = intervalSec;
+  await chrome.storage.local.set({ settings: updated });
 
-  // Persist the preference
-  currentSettings.autopilotEnabled = enabled;
-  if (intervalSec) currentSettings.autopilotIntervalSec = intervalSec;
-  await chrome.storage.local.set({ settings: currentSettings });
+  // Now reload — this will set autopilotEnabled from the freshly saved value
+  await loadSettings();
 
   // Tell the content script to start/stop
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
