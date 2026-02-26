@@ -161,6 +161,13 @@ async function handleMessage(message, sender) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       return { tab };
 
+    // ── Human Typer relay (content script → sidebar) ──
+    case 'HUMAN_TYPE_COMPLETE':
+    case 'HUMAN_TYPE_STOPPED':
+    case 'HUMAN_TYPE_ERROR':
+      broadcastToSidebar(message);
+      return { relayed: true };
+
     default:
       return { error: `Unknown message type: ${message.type}` };
   }

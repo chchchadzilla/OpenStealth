@@ -30,6 +30,7 @@
         "src/content/page-monitor.js",
         "src/content/stealth-overlay.js",
         "src/content/autopilot.js",
+        "src/content/human-typer.js",
         "src/content/content-main.js"
       ],
       "css": [

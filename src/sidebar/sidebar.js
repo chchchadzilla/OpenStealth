@@ -22,6 +22,13 @@ const toolContent = document.getElementById('tool-content');
 const btnApproveTools = document.getElementById('btn-approve-tools');
 const btnDenyTools = document.getElementById('btn-deny-tools');
 const btnAutopilot = document.getElementById('btn-autopilot');
+const typeItBar = document.getElementById('type-it-bar');
+const typeItText = document.getElementById('type-it-text');
+const typeItIcon = document.getElementById('type-it-icon');
+const btnTypeIt = document.getElementById('btn-type-it');
+const btnTypeStart = document.getElementById('btn-type-start');
+const btnTypeStop = document.getElementById('btn-type-stop');
+const btnTypeCancel = document.getElementById('btn-type-cancel');
 
 let currentStreamingEl = null;
 let currentStreamSource = null; // 'manual' or 'autopilot'
@@ -30,6 +37,8 @@ let autopilotActive = false;
 let autopilotCountdown = 0;
 let countdownInterval = null;
 let settings = {};
+let pendingTypeText = null; // Text queued for human typing
+let isHumanTyping = false;  // Whether the typer is active
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 async function init() {
@@ -297,6 +306,26 @@ chrome.runtime.onMessage.addListener((message) => {
         setStatus('ready', 'Ready');
       }
       break;
+
+    case 'HUMAN_TYPE_COMPLETE':
+      typeItIcon.textContent = '✅';
+      typeItText.textContent = 'Done! Text typed successfully.';
+      resetTypeItBar(2500);
+      break;
+
+    case 'HUMAN_TYPE_STOPPED':
+      typeItIcon.textContent = '🤚';
+      typeItText.textContent = message.reason === 'manual-stop'
+        ? 'Stopped.'
+        : 'You took over — typing paused.';
+      resetTypeItBar(2500);
+      break;
+
+    case 'HUMAN_TYPE_ERROR':
+      typeItIcon.textContent = '⚠️';
+      typeItText.textContent = `Error: ${message.error}`;
+      resetTypeItBar(3000);
+      break;
   }
 });
 
@@ -411,6 +440,129 @@ btnScreenshot.addEventListener('click', async () => {
     btnScreenshot.disabled = false;
   }
 });
+
+// ─── Type-It: Text Selection Detection ──────────────────────────────────────
+// When the user highlights text inside an AI response, show the Type-It bar.
+document.addEventListener('selectionchange', () => {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || isHumanTyping) return;
+
+  const text = sel.toString().trim();
+  if (!text) {
+    // Only hide if not in pending/typing state
+    if (!pendingTypeText && !isHumanTyping) {
+      typeItBar.classList.add('hidden');
+    }
+    return;
+  }
+
+  // Check if selection is within a message-content div (AI response)
+  const anchor = sel.anchorNode?.parentElement?.closest?.('.message.assistant .message-content')
+              || sel.anchorNode?.closest?.('.message.assistant .message-content');
+  const focus = sel.focusNode?.parentElement?.closest?.('.message.assistant .message-content')
+             || sel.focusNode?.closest?.('.message.assistant .message-content');
+
+  if (anchor || focus) {
+    // Show the Type-It bar with the text preview
+    typeItBar.classList.remove('hidden');
+    btnTypeIt.classList.remove('hidden');
+    btnTypeStart.classList.add('hidden');
+    btnTypeStop.classList.add('hidden');
+    const preview = text.length > 60 ? text.substring(0, 57) + '...' : text;
+    typeItText.textContent = `"${preview}"`;
+    typeItIcon.textContent = '✍️';
+    // Store for later
+    typeItBar.dataset.selectedText = text;
+  }
+});
+
+btnTypeIt.addEventListener('click', () => {
+  const text = typeItBar.dataset.selectedText;
+  if (!text) return;
+
+  pendingTypeText = text;
+
+  // Switch to "waiting for cursor placement" state
+  btnTypeIt.classList.add('hidden');
+  btnTypeStart.classList.remove('hidden');
+  btnTypeStop.classList.add('hidden');
+  typeItIcon.textContent = '🎯';
+  typeItText.textContent = 'Place your cursor in the target field, then click ▶ Start';
+});
+
+btnTypeStart.addEventListener('click', async () => {
+  if (!pendingTypeText) return;
+
+  // Send the text to the content script to start typing
+  btnTypeStart.classList.add('hidden');
+  btnTypeStop.classList.remove('hidden');
+  typeItIcon.textContent = '⌨️';
+  typeItText.textContent = 'Typing...';
+  isHumanTyping = true;
+
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error('No active tab');
+
+    const result = await chrome.tabs.sendMessage(tab.id, {
+      type: 'HUMAN_TYPE_START',
+      text: pendingTypeText,
+    });
+
+    if (result?.error) {
+      typeItIcon.textContent = '⚠️';
+      typeItText.textContent = result.error;
+      resetTypeItBar(3000);
+    }
+  } catch (err) {
+    typeItIcon.textContent = '⚠️';
+    typeItText.textContent = 'Error: ' + (err.message || 'Could not reach page');
+    resetTypeItBar(3000);
+  }
+});
+
+btnTypeStop.addEventListener('click', async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab?.id) {
+      await chrome.tabs.sendMessage(tab.id, { type: 'HUMAN_TYPE_STOP' });
+    }
+  } catch (e) {
+    // Silent
+  }
+  typeItIcon.textContent = '⏹';
+  typeItText.textContent = 'Stopped.';
+  resetTypeItBar(2000);
+});
+
+btnTypeCancel.addEventListener('click', () => {
+  if (isHumanTyping) {
+    // Also stop typing on the page
+    btnTypeStop.click();
+    return;
+  }
+  pendingTypeText = null;
+  isHumanTyping = false;
+  typeItBar.classList.add('hidden');
+});
+
+function resetTypeItBar(delayMs) {
+  pendingTypeText = null;
+  isHumanTyping = false;
+  if (delayMs) {
+    setTimeout(() => {
+      typeItBar.classList.add('hidden');
+      btnTypeIt.classList.remove('hidden');
+      btnTypeStart.classList.add('hidden');
+      btnTypeStop.classList.add('hidden');
+    }, delayMs);
+  } else {
+    typeItBar.classList.add('hidden');
+    btnTypeIt.classList.remove('hidden');
+    btnTypeStart.classList.add('hidden');
+    btnTypeStop.classList.add('hidden');
+  }
+}
 
 // ─── Helper ──────────────────────────────────────────────────────────────────
 function sendMessage(msg) {

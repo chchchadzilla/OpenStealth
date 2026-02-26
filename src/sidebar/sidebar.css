@@ -513,3 +513,114 @@ html, body {
   33%  { content: '..'; }
   66%  { content: '...'; }
 }
+
+/* ── Type-It Bar ───────────────────────────────────────────────────────── */
+
+#type-it-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-top: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  animation: slideIn 0.2s ease-out;
+}
+
+#type-it-bar.hidden {
+  display: none;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+#type-it-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+#type-it-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+#type-it-text {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#type-it-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-small {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  font-size: 11px;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn-accent {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-accent:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+.btn-green {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: var(--green);
+}
+
+.btn-green:hover {
+  background: var(--green);
+  color: var(--bg-primary);
+}
+
+.btn-red {
+  background: var(--red-dim);
+  color: var(--red);
+  border-color: var(--red);
+}
+
+.btn-red:hover {
+  background: var(--red);
+  color: var(--bg-primary);
+}
+
+.icon-btn-sm {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.icon-btn-sm:hover {
+  color: var(--text-primary);
+}
