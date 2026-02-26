@@ -144,6 +144,7 @@
     'proctorio', 'examity', 'respondus', 'honorlock', 'proctortrack',
     'examsoft', 'proctor', 'lockdown', 'securebrowser', 'proctoru',
     'meazure', 'talview', 'mettl', 'hackerrank', 'codility',
+    'codesignal',
   ];
 
   function detectProctoringEnvironment() {
