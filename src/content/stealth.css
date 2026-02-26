@@ -1,23 +1,12 @@
-/* OpenStealth — Stealth Content Script Styles */
-/* Minimal — most UI is in the Chrome sidePanel which is already invisible to capture */
+/*
+ * OpenStealth — Stealth Content Script Styles
+ * NOTE: We intentionally use MINIMAL static CSS here.
+ * Dynamic stealth attributes are generated per-page-load by stealth-overlay.js
+ * to prevent static signature detection.
+ * 
+ * The main sidebar lives in Chrome's sidePanel — already invisible to capture.
+ * This file only provides base isolation if we ever inject floating elements.
+ */
 
-[data-openstealth] {
-  /* Isolation from page styles */
-  all: initial;
-  contain: strict;
-  isolation: isolate;
-  z-index: 2147483647;
-  pointer-events: none;
-}
-
-[data-openstealth][data-interactive="true"] {
-  pointer-events: auto;
-}
-
-/* Ensure our elements don't interfere with page layout */
-[data-openstealth-inject] {
-  position: fixed !important;
-  top: 0 !important;
-  right: 0 !important;
-  z-index: 2147483647 !important;
-}
+/* Base isolation — applied via JS-generated random attribute, not static class */
+/* See stealth-overlay.js: ATTR_MARKER is randomized per page load */

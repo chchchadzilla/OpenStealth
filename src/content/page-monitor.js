@@ -234,8 +234,9 @@
         if (m.type === 'attributes' && (m.target === document.body || m.target === document.documentElement)) {
           return false;
         }
-        // Ignore our own injected elements
-        if (m.target.closest?.('[data-openstealth]')) return false;
+        // Ignore our own injected elements (uses dynamic marker from stealth-overlay)
+        const marker = chrome.runtime?.__stealthMarker;
+        if (marker && m.target.closest?.(`[${marker}]`)) return false;
         // Ignore hidden elements
         if (m.target.nodeType === 1) {
           const style = window.getComputedStyle(m.target);
@@ -277,8 +278,6 @@
     const changes = detectSignificantChange(lastSnapshot, newSnapshot);
 
     if (changes) {
-      console.log('[OpenStealth] Significant changes detected:', changes);
-
       const isVisualChange = changes.some(c => c.isVisualChange);
       const description = changes.map(c => c.description).join('; ');
 
@@ -291,7 +290,7 @@
         activeSlide: newSnapshot.activeSlide,
         images: newSnapshot.images.slice(0, 10),
         meta: newSnapshot.meta,
-        userInteraction: window.__openstealth_lastInteraction || null,
+        userInteraction: chrome.runtime.__lastInteraction || null,
       };
 
       // Send to background
@@ -349,7 +348,7 @@
         images: snapshot?.images?.slice(0, 10),
         meta: snapshot?.meta,
         activeSlide: snapshot?.activeSlide,
-        interaction: window.__openstealth_lastInteraction,
+        interaction: chrome.runtime.__lastInteraction || null,
       });
       return true;
     }
@@ -366,7 +365,7 @@
     lastSnapshot = takeSnapshot();
     startObserving();
     watchUrlChanges();
-    console.log('[OpenStealth] Page monitor active');
+    // NO console.log — complete radio silence
   }
 
   if (document.readyState === 'loading') {
@@ -375,11 +374,13 @@
     boot();
   }
 
-  // Expose for other content scripts
-  window.__openstealth_monitor = {
-    takeSnapshot,
-    checkForChanges,
-    setEnabled: (v) => { isEnabled = v; },
-  };
+  // Expose for other content scripts via chrome.runtime (extension-only, invisible to page)
+  try {
+    chrome.runtime.__pageMonitor = {
+      takeSnapshot,
+      checkForChanges,
+      setEnabled: (v) => { isEnabled = v; },
+    };
+  } catch (e) { /* swallow */ }
 
 })();

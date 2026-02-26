@@ -7,6 +7,16 @@
 (() => {
   'use strict';
 
+  // ─── Stealth Helper ──────────────────────────────────────────────────────
+  // Check if an element belongs to us using the dynamic marker from stealth-overlay
+  function isOurElement(el) {
+    try {
+      const marker = chrome.runtime.__stealthMarker;
+      if (marker && el?.closest?.(`[${marker}]`)) return true;
+    } catch (e) { /* swallow */ }
+    return false;
+  }
+
   // ─── State ───────────────────────────────────────────────────────────────
   let lastInteraction = {
     type: null,
@@ -110,7 +120,7 @@
   // Click
   document.addEventListener('click', (e) => {
     const el = e.target;
-    if (el.closest?.('[data-openstealth]')) return;
+    if (isOurElement(el)) return;
 
     lastInteraction = {
       type: 'click',
@@ -147,7 +157,7 @@
   // Focus (entering input fields)
   document.addEventListener('focusin', (e) => {
     const el = e.target;
-    if (el.closest?.('[data-openstealth]')) return;
+    if (isOurElement(el)) return;
     if (!el.tagName) return;
 
     const isInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || el.isContentEditable;
@@ -168,7 +178,7 @@
   let typingTimer = null;
   document.addEventListener('input', (e) => {
     const el = e.target;
-    if (el.closest?.('[data-openstealth]')) return;
+    if (isOurElement(el)) return;
 
     clearTimeout(typingTimer);
     typingTimer = setTimeout(() => {
@@ -188,7 +198,7 @@
   let hoverTimer = null;
   document.addEventListener('mouseover', (e) => {
     const el = e.target;
-    if (el.closest?.('[data-openstealth]')) return;
+    if (isOurElement(el)) return;
 
     // Only track hover on meaningful elements
     const isInteresting = el.tagName === 'IMG' || el.tagName === 'CANVAS' || 
@@ -207,15 +217,21 @@
         timestamp: Date.now(),
         position: { x: e.clientX, y: e.clientY },
       };
-      // Don't broadcast hover — only store it
-      window.__openstealth_lastInteraction = serializeInteraction(lastInteraction);
+      // Store on chrome.runtime only (invisible to page scripts)
+      try {
+        chrome.runtime.__lastInteraction = serializeInteraction(lastInteraction);
+      } catch (e) { /* swallow */ }
     }, 1000); // Only if they hover for 1s
   }, true);
 
   // ─── Broadcast ────────────────────────────────────────────────────────────
   function broadcastInteraction() {
     const serialized = serializeInteraction(lastInteraction);
-    window.__openstealth_lastInteraction = serialized;
+    
+    // Store on chrome.runtime (extension-only, invisible to page scripts)
+    try {
+      chrome.runtime.__lastInteraction = serialized;
+    } catch (e) { /* swallow */ }
 
     chrome.runtime.sendMessage({
       type: 'USER_INTERACTION',
@@ -233,11 +249,14 @@
     };
   }
 
-  // ─── Public API ───────────────────────────────────────────────────────────
-  window.__openstealth_interactions = {
-    getLast: () => serializeInteraction(lastInteraction),
-    getLastElement: () => lastInteraction.element,
-  };
+  // NO window globals — use chrome.runtime for inter-script communication
+  // chrome.runtime is isolated to our extension and invisible to page scripts
+  try {
+    chrome.runtime.__interactions = {
+      getLast: () => serializeInteraction(lastInteraction),
+      getLastElement: () => lastInteraction.element,
+    };
+  } catch (e) { /* swallow */ }
 
-  console.log('[OpenStealth] Interaction tracker active');
+  // NO console.log — complete radio silence
 })();

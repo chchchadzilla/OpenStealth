@@ -49,8 +49,9 @@ export class OpenRouterAPI {
     const headers = {
       'Authorization': `Bearer ${this.apiKey}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://github.com/openstealth',
-      'X-Title': 'OpenStealth',
+      // Anonymized — don't leak extension identity in API traffic
+      'HTTP-Referer': 'https://openrouter.ai',
+      'X-Title': 'Browser Assistant',
     };
 
     try {

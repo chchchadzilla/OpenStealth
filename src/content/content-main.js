@@ -247,9 +247,12 @@
     }
 
     if (msg.type === 'GET_FOCUSED_CONTEXT') {
-      const interaction = window.__openstealth_lastInteraction;
-      const monitor = window.__openstealth_monitor;
-      const snapshot = monitor?.takeSnapshot?.();
+      // Access interaction data via chrome.runtime (extension-only channel)
+      const interaction = chrome.runtime.__lastInteraction || null;
+
+      // Access page monitor via chrome.runtime
+      const monitorRef = chrome.runtime.__pageMonitor;
+      const snapshot = monitorRef?.takeSnapshot?.();
 
       sendResponse({
         interaction,
@@ -298,5 +301,5 @@
     return null;
   }
 
-  console.log('[OpenStealth] Content main loaded');
+  // NO console.log — complete radio silence
 })();
