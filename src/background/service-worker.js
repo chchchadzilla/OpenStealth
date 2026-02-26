@@ -20,6 +20,12 @@ chrome.runtime.onInstalled.addListener(async () => {
     enabled: true,
   });
 
+  // Set the panel to open when the toolbar icon is clicked
+  // This is the most reliable method — no popup, no onClicked race conditions
+  if (chrome.sidePanel.setPanelBehavior) {
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
+  }
+
   // Set default settings
   const defaults = {
     apiKey: '',
@@ -51,9 +57,14 @@ chrome.runtime.onInstalled.addListener(async () => {
   console.log('[OpenStealth] Extension installed/updated');
 });
 
-// Open side panel when action icon is clicked
+// Fallback: open side panel when action icon is clicked
+// (Only fires if setPanelBehavior is not available / not set)
 chrome.action.onClicked.addListener(async (tab) => {
-  await chrome.sidePanel.open({ tabId: tab.id });
+  try {
+    await chrome.sidePanel.open({ tabId: tab.id });
+  } catch (err) {
+    console.warn('[OpenStealth] sidePanel.open failed:', err.message);
+  }
 });
 
 // ─── Settings Loader ────────────────────────────────────────────────────────
@@ -326,7 +337,35 @@ chrome.contextMenus?.create?.({
   contexts: ['selection', 'image', 'page'],
 }, () => chrome.runtime.lastError); // Suppress duplicate errors
 
+chrome.contextMenus?.create?.({
+  id: 'openstealth-settings',
+  title: 'OpenStealth Settings',
+  contexts: ['action'],
+}, () => chrome.runtime.lastError);
+
+chrome.contextMenus?.create?.({
+  id: 'openstealth-status',
+  title: 'OpenStealth Status',
+  contexts: ['action'],
+}, () => chrome.runtime.lastError);
+
 chrome.contextMenus?.onClicked?.addListener(async (info, tab) => {
+  if (info.menuItemId === 'openstealth-settings') {
+    chrome.runtime.openOptionsPage();
+    return;
+  }
+
+  if (info.menuItemId === 'openstealth-status') {
+    // Open the popup as a standalone window for status
+    chrome.windows.create({
+      url: chrome.runtime.getURL('src/popup/popup.html'),
+      type: 'popup',
+      width: 360,
+      height: 320,
+    });
+    return;
+  }
+
   if (info.menuItemId === 'openstealth-query') {
     await chrome.sidePanel.open({ tabId: tab.id });
 
