@@ -24,8 +24,11 @@ const btnDenyTools = document.getElementById('btn-deny-tools');
 const btnAutopilot = document.getElementById('btn-autopilot');
 
 let currentStreamingEl = null;
+let currentStreamSource = null; // 'manual' or 'autopilot'
 let autoDetect = true;
 let autopilotActive = false;
+let autopilotCountdown = 0;
+let countdownInterval = null;
 let settings = {};
 
 // ─── Init ────────────────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@ async function init() {
   autopilotActive = apStatus?.enabled || false;
   btnAutopilot.classList.toggle('active', autopilotActive);
   if (autopilotActive) {
-    setStatus('ready', `Auto-Pilot ON (${settings.autopilotIntervalSec || 30}s)`);
+    startCountdown(settings.autopilotIntervalSec || 30);
   }
 
   // Load conversation history
@@ -77,6 +80,7 @@ async function sendQuery() {
 
   // Create streaming placeholder
   currentStreamingEl = appendMessage('assistant', '', true);
+  currentStreamSource = 'manual';
   scrollToBottom();
 
   await sendMessage({
@@ -151,11 +155,47 @@ function setStatus(state, text) {
   statusText.textContent = text || 'Ready';
 }
 
+function startCountdown(seconds) {
+  stopCountdown();
+  autopilotCountdown = seconds;
+  updateCountdownDisplay();
+  countdownInterval = setInterval(() => {
+    autopilotCountdown--;
+    if (autopilotCountdown <= 0) {
+      autopilotCountdown = 0;
+      updateCountdownDisplay();
+      // Don't clear — the next tick will reset it
+    } else {
+      updateCountdownDisplay();
+    }
+  }, 1000);
+}
+
+function stopCountdown() {
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+  autopilotCountdown = 0;
+}
+
+function updateCountdownDisplay() {
+  if (!autopilotActive) return;
+  if (autopilotCountdown > 0) {
+    statusText.textContent = `🤖 Auto-Pilot: next scan in ${autopilotCountdown}s`;
+  } else {
+    statusText.textContent = '🤖 Auto-Pilot: scanning...';
+  }
+}
+
 // ─── Background Message Listener ────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message) => {
   switch (message.type) {
     case 'LLM_TOKEN':
+      // Only update streaming el if this token matches the current source
       if (currentStreamingEl) {
+        if (message.isAutopilot && currentStreamSource !== 'autopilot') break;
+        if (!message.isAutopilot && currentStreamSource !== 'manual') break;
         currentStreamingEl.innerHTML = renderMarkdown(message.partial);
         scrollToBottom();
       }
@@ -166,8 +206,9 @@ chrome.runtime.onMessage.addListener((message) => {
         currentStreamingEl.classList.remove('streaming-cursor');
         currentStreamingEl.innerHTML = renderMarkdown(message.content);
         currentStreamingEl = null;
+        currentStreamSource = null;
       }
-      setStatus('ready', 'Ready');
+      setStatus('ready', autopilotActive ? `🤖 Auto-Pilot ON` : 'Ready');
       btnSend.disabled = false;
 
       // Handle tool calls
@@ -182,6 +223,7 @@ chrome.runtime.onMessage.addListener((message) => {
         currentStreamingEl.classList.remove('streaming-cursor');
         currentStreamingEl.innerHTML = `<span style="color:var(--red)">Error: ${message.error}</span>`;
         currentStreamingEl = null;
+        currentStreamSource = null;
       }
       setStatus('error', 'Error');
       btnSend.disabled = false;
@@ -207,8 +249,16 @@ chrome.runtime.onMessage.addListener((message) => {
           : `🤖 Auto-Pilot scanning: ${message.pageTitle || 'page'}`;
         appendMessage('system', label);
         currentStreamingEl = appendMessage('assistant', '', true);
+        currentStreamSource = 'autopilot';
         scrollToBottom();
         setStatus('processing', 'Auto-Pilot thinking...');
+      }
+      break;
+
+    case 'AUTOPILOT_TICK_RECEIVED':
+      // A tick was processed — restart the countdown
+      if (autopilotActive) {
+        startCountdown(message.intervalSec || settings.autopilotIntervalSec || 30);
       }
       break;
 
@@ -217,8 +267,11 @@ chrome.runtime.onMessage.addListener((message) => {
         currentStreamingEl.classList.remove('streaming-cursor');
         currentStreamingEl.innerHTML = renderMarkdown(message.content);
         currentStreamingEl = null;
+        currentStreamSource = null;
       }
-      setStatus('ready', `Auto-Pilot ON (${settings.autopilotIntervalSec || 30}s)`);
+      if (autopilotActive) {
+        startCountdown(settings.autopilotIntervalSec || 30);
+      }
       scrollToBottom();
       break;
 
@@ -227,14 +280,22 @@ chrome.runtime.onMessage.addListener((message) => {
         currentStreamingEl.classList.remove('streaming-cursor');
         currentStreamingEl.innerHTML = `<span style="color:var(--red)">Auto-Pilot error: ${message.error}</span>`;
         currentStreamingEl = null;
+        currentStreamSource = null;
       }
-      setStatus('ready', 'Auto-Pilot ON');
+      if (autopilotActive) {
+        startCountdown(settings.autopilotIntervalSec || 30);
+      }
       break;
 
     case 'AUTOPILOT_STATUS_CHANGED':
       autopilotActive = message.enabled;
       btnAutopilot.classList.toggle('active', autopilotActive);
-      setStatus('ready', autopilotActive ? `Auto-Pilot ON (${settings.autopilotIntervalSec || 30}s)` : 'Ready');
+      if (autopilotActive) {
+        startCountdown(settings.autopilotIntervalSec || 30);
+      } else {
+        stopCountdown();
+        setStatus('ready', 'Ready');
+      }
       break;
   }
 });
@@ -310,12 +371,45 @@ btnAutopilot.addEventListener('click', async () => {
 
   if (autopilotActive) {
     appendMessage('system', `🤖 Auto-Pilot enabled — monitoring every ${settings.autopilotIntervalSec || 30}s. Highlight text on the page to signal what you need help with.`);
-    setStatus('ready', `Auto-Pilot ON (${settings.autopilotIntervalSec || 30}s)`);
+    startCountdown(settings.autopilotIntervalSec || 30);
   } else {
     appendMessage('system', '🤖 Auto-Pilot disabled.');
+    stopCountdown();
     setStatus('ready', 'Ready');
   }
   scrollToBottom();
+});
+
+btnScreenshot.addEventListener('click', async () => {
+  if (!settings.apiKey) {
+    appendMessage('system', '⚠️ No API key configured — click ⚙️ to add one.');
+    return;
+  }
+
+  setStatus('processing', 'Capturing screenshot...');
+  btnScreenshot.disabled = true;
+
+  try {
+    appendMessage('user', '📷 Screenshot analysis requested');
+    currentStreamingEl = appendMessage('assistant', '', true);
+    scrollToBottom();
+
+    await sendMessage({
+      type: 'SIDEBAR_QUERY',
+      query: 'Analyze this screenshot and describe what you see. If there are any questions, problems, or tasks visible, provide helpful answers or guidance.',
+      includeScreenshot: true,
+      includePageContext: true,
+    });
+  } catch (err) {
+    if (currentStreamingEl) {
+      currentStreamingEl.classList.remove('streaming-cursor');
+      currentStreamingEl.innerHTML = `<span style="color:var(--red)">Screenshot error: ${err.message}</span>`;
+      currentStreamingEl = null;
+    }
+    setStatus('error', 'Screenshot failed');
+  } finally {
+    btnScreenshot.disabled = false;
+  }
 });
 
 // ─── Helper ──────────────────────────────────────────────────────────────────

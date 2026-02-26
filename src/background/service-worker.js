@@ -12,6 +12,7 @@ let currentSettings = {};
 let lastPageContext = null;
 let conversationHistory = [];
 let isProcessing = false;
+let isAutopilotProcessing = false;
 let autopilotEnabled = false;
 let autopilotHistory = [];  // Separate history for auto-pilot context
 
@@ -269,7 +270,21 @@ async function handleSidebarQuery(message) {
           quality: 80,
         });
       } catch (e) {
-        console.warn('[OpenStealth] Screenshot capture failed:', e);
+        // Silent fail — screenshot not critical
+      }
+    }
+
+    // Fetch fresh page context if requested
+    let pageContext = lastPageContext;
+    if (message.includePageContext) {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id) {
+          const ctx = await chrome.tabs.sendMessage(tab.id, { type: 'GET_FOCUSED_CONTEXT' });
+          if (ctx) pageContext = ctx;
+        }
+      } catch (e) {
+        // Fall back to cached lastPageContext
       }
     }
 
@@ -277,7 +292,7 @@ async function handleSidebarQuery(message) {
       message.query,
       conversationHistory,
       imageData,
-      lastPageContext
+      pageContext
     );
 
     let fullResponse = '';
@@ -370,14 +385,23 @@ async function toggleAutopilot(enabled, intervalSec) {
 
 // ─── Auto-Pilot Tick Handler ─────────────────────────────────────────────────
 async function handleAutopilotTick(message, sender) {
-  if (!autopilotEnabled) return { skipped: true };
-  if (isProcessing) return { queued: true };
-  if (!apiInstance) return { error: 'No API key configured' };
+  // Always notify sidebar of the tick for countdown reset
+  broadcastToSidebar({
+    type: 'AUTOPILOT_TICK_RECEIVED',
+    intervalSec: currentSettings.autopilotIntervalSec || 30,
+  });
+
+  if (!autopilotEnabled) return { skipped: true, reason: 'disabled' };
+  if (isAutopilotProcessing) return { skipped: true, reason: 'already processing' };
+  if (!apiInstance) {
+    broadcastToSidebar({ type: 'AUTOPILOT_ERROR', error: 'No API key configured. Go to ⚙️ Settings.' });
+    return { error: 'No API key configured' };
+  }
 
   const data = message.data;
   if (!data) return { error: 'No data' };
 
-  isProcessing = true;
+  isAutopilotProcessing = true;
 
   try {
     await loadSettings();
@@ -487,7 +511,7 @@ async function handleAutopilotTick(message, sender) {
     broadcastToSidebar({ type: 'AUTOPILOT_ERROR', error: err.message });
     return { error: err.message };
   } finally {
-    isProcessing = false;
+    isAutopilotProcessing = false;
   }
 }
 

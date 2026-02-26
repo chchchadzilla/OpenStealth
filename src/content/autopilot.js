@@ -19,7 +19,6 @@
   let intervalId = null;
   let intervalSec = 30;
   let selectionHistory = [];       // Rolling history of text highlights
-  let lastSentSnapshot = '';       // Hash of last data sent (dedup)
   let lastSelectionText = '';      // Avoid duplicate selection captures
   let lastPageTextHash = '';       // Track page changes between ticks
 
@@ -140,20 +139,11 @@
         ago: Math.round((Date.now() - s.timestamp) / 1000) + 's ago',
       }));
 
-    // Build a dedup key — don't resend if nothing changed
-    const snapshotKey = simpleHash(
-      pageHash + '|' + 
-      recentSelections.map(s => s.text).join('|') +
-      '|' + lastSelectionText
-    );
-
-    if (snapshotKey === lastSentSnapshot) return; // Nothing new
-    lastSentSnapshot = snapshotKey;
-
     const pageChanged = pageHash !== lastPageTextHash;
     lastPageTextHash = pageHash;
 
-    // Send tick to service worker
+    // Always send the tick — let the service worker decide what to do.
+    // The sidebar needs ticks to update the countdown and show responses.
     chrome.runtime.sendMessage({
       type: 'AUTOPILOT_TICK',
       data: {
