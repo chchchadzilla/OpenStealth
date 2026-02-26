@@ -29,6 +29,7 @@
         "src/content/interaction-tracker.js",
         "src/content/page-monitor.js",
         "src/content/stealth-overlay.js",
+        "src/content/autopilot.js",
         "src/content/content-main.js"
       ],
       "css": [

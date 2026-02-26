@@ -13,6 +13,8 @@ const fields = {
   autoDetect: document.getElementById('autoDetect'),
   changeThreshold: document.getElementById('changeThreshold'),
   debounceMs: document.getElementById('debounceMs'),
+  autopilotEnabled: document.getElementById('autopilotEnabled'),
+  autopilotIntervalSec: document.getElementById('autopilotIntervalSec'),
   typingSpeed: document.getElementById('typingSpeed'),
   typingWPM: document.getElementById('typingWPM'),
   typoRate: document.getElementById('typoRate'),
@@ -66,6 +68,8 @@ async function loadSettings() {
   fields.autoDetect.checked = settings.autoDetect !== false;
   fields.changeThreshold.value = settings.changeThreshold || 0.3;
   fields.debounceMs.value = settings.debounceMs || 2000;
+  fields.autopilotEnabled.checked = !!settings.autopilotEnabled;
+  fields.autopilotIntervalSec.value = settings.autopilotIntervalSec || 30;
   fields.typingSpeed.value = settings.typingSpeed || 'medium';
   fields.typingWPM.value = settings.typingWPM || 45;
   fields.typoRate.value = settings.typoRate || 0.04;
@@ -95,6 +99,8 @@ async function saveSettings() {
     autoDetect: fields.autoDetect.checked,
     changeThreshold: parseFloat(fields.changeThreshold.value) || 0.3,
     debounceMs: parseInt(fields.debounceMs.value) || 2000,
+    autopilotEnabled: fields.autopilotEnabled.checked,
+    autopilotIntervalSec: parseInt(fields.autopilotIntervalSec.value) || 30,
     typingSpeed: fields.typingSpeed.value,
     typingWPM: parseInt(fields.typingWPM.value) || 45,
     typoRate: parseFloat(fields.typoRate.value) || 0.04,

@@ -99,6 +99,26 @@
       </div>
     </section>
 
+    <!-- Auto-Pilot -->
+    <section class="section">
+      <h2>🛩️ Auto-Pilot</h2>
+      <p class="section-desc">Hands-free mode — the AI monitors the page and assists automatically without any interaction with the extension. Just highlight text on the page to signal what you need help with.</p>
+
+      <div class="field">
+        <label class="toggle-label">
+          <input type="checkbox" id="autopilotEnabled">
+          <span>Enable Auto-Pilot on startup</span>
+        </label>
+        <p class="help">Automatically start monitoring when you visit a page</p>
+      </div>
+
+      <div class="field">
+        <label for="autopilotIntervalSec">Scan Interval (seconds)</label>
+        <input type="number" id="autopilotIntervalSec" value="30" min="10" max="120" step="5">
+        <p class="help">How often the AI scans the page and your highlights (10-120 seconds)</p>
+      </div>
+    </section>
+
     <!-- Human Simulation -->
     <section class="section">
       <h2>🤖 Human Simulation</h2>

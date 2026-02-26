@@ -21,9 +21,11 @@ const toolPanel = document.getElementById('tool-panel');
 const toolContent = document.getElementById('tool-content');
 const btnApproveTools = document.getElementById('btn-approve-tools');
 const btnDenyTools = document.getElementById('btn-deny-tools');
+const btnAutopilot = document.getElementById('btn-autopilot');
 
 let currentStreamingEl = null;
 let autoDetect = true;
+let autopilotActive = false;
 let settings = {};
 
 // ─── Init ────────────────────────────────────────────────────────────────────
@@ -40,6 +42,14 @@ async function init() {
 
   autoDetect = settings.autoDetect !== false;
   btnAutoToggle.classList.toggle('active', autoDetect);
+
+  // Load auto-pilot state
+  const apStatus = await sendMessage({ type: 'AUTOPILOT_GET_STATUS' });
+  autopilotActive = apStatus?.enabled || false;
+  btnAutopilot.classList.toggle('active', autopilotActive);
+  if (autopilotActive) {
+    setStatus('ready', `Auto-Pilot ON (${settings.autopilotIntervalSec || 30}s)`);
+  }
 
   // Load conversation history
   const convo = await sendMessage({ type: 'GET_CONVERSATION' });
@@ -188,6 +198,44 @@ chrome.runtime.onMessage.addListener((message) => {
         scrollToBottom();
       }
       break;
+
+    case 'AUTOPILOT_THINKING':
+      // Auto-pilot is about to stream a response — create placeholder
+      if (!currentStreamingEl) {
+        const label = message.selections > 0
+          ? `🤖 Auto-Pilot (${message.selections} highlight${message.selections > 1 ? 's' : ''} detected)`
+          : `🤖 Auto-Pilot scanning: ${message.pageTitle || 'page'}`;
+        appendMessage('system', label);
+        currentStreamingEl = appendMessage('assistant', '', true);
+        scrollToBottom();
+        setStatus('processing', 'Auto-Pilot thinking...');
+      }
+      break;
+
+    case 'AUTOPILOT_COMPLETE':
+      if (currentStreamingEl) {
+        currentStreamingEl.classList.remove('streaming-cursor');
+        currentStreamingEl.innerHTML = renderMarkdown(message.content);
+        currentStreamingEl = null;
+      }
+      setStatus('ready', `Auto-Pilot ON (${settings.autopilotIntervalSec || 30}s)`);
+      scrollToBottom();
+      break;
+
+    case 'AUTOPILOT_ERROR':
+      if (currentStreamingEl) {
+        currentStreamingEl.classList.remove('streaming-cursor');
+        currentStreamingEl.innerHTML = `<span style="color:var(--red)">Auto-Pilot error: ${message.error}</span>`;
+        currentStreamingEl = null;
+      }
+      setStatus('ready', 'Auto-Pilot ON');
+      break;
+
+    case 'AUTOPILOT_STATUS_CHANGED':
+      autopilotActive = message.enabled;
+      btnAutopilot.classList.toggle('active', autopilotActive);
+      setStatus('ready', autopilotActive ? `Auto-Pilot ON (${settings.autopilotIntervalSec || 30}s)` : 'Ready');
+      break;
   }
 });
 
@@ -248,6 +296,26 @@ btnAutoToggle.addEventListener('click', () => {
   // Persist
   settings.autoDetect = autoDetect;
   sendMessage({ type: 'SAVE_SETTINGS', settings });
+});
+
+btnAutopilot.addEventListener('click', async () => {
+  autopilotActive = !autopilotActive;
+  btnAutopilot.classList.toggle('active', autopilotActive);
+
+  await sendMessage({
+    type: 'AUTOPILOT_TOGGLE',
+    enabled: autopilotActive,
+    intervalSec: settings.autopilotIntervalSec || 30,
+  });
+
+  if (autopilotActive) {
+    appendMessage('system', `🤖 Auto-Pilot enabled — monitoring every ${settings.autopilotIntervalSec || 30}s. Highlight text on the page to signal what you need help with.`);
+    setStatus('ready', `Auto-Pilot ON (${settings.autopilotIntervalSec || 30}s)`);
+  } else {
+    appendMessage('system', '🤖 Auto-Pilot disabled.');
+    setStatus('ready', 'Ready');
+  }
+  scrollToBottom();
 });
 
 // ─── Helper ──────────────────────────────────────────────────────────────────

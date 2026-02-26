@@ -12,6 +12,8 @@ let currentSettings = {};
 let lastPageContext = null;
 let conversationHistory = [];
 let isProcessing = false;
+let autopilotEnabled = false;
+let autopilotHistory = [];  // Separate history for auto-pilot context
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 chrome.runtime.onInstalled.addListener(async () => {
@@ -47,6 +49,8 @@ chrome.runtime.onInstalled.addListener(async () => {
     temperature: 0.7,
     systemPrompt: '',
     stealthLevel: 'high',       // low, medium, high, paranoid
+    autopilotEnabled: false,
+    autopilotIntervalSec: 30,
   };
 
   const stored = await chrome.storage.local.get('settings');
@@ -140,6 +144,16 @@ async function handleMessage(message, sender) {
     // ── Human simulation commands ──
     case 'EXECUTE_HUMAN_ACTION':
       return await executeHumanAction(message, sender);
+
+    // ── Auto-pilot ──
+    case 'AUTOPILOT_TICK':
+      return await handleAutopilotTick(message, sender);
+
+    case 'AUTOPILOT_TOGGLE':
+      return await toggleAutopilot(message.enabled, message.intervalSec);
+
+    case 'AUTOPILOT_GET_STATUS':
+      return { enabled: autopilotEnabled };
 
     // ── Get active tab info ──
     case 'GET_ACTIVE_TAB':
@@ -320,6 +334,160 @@ async function executeHumanAction(message, sender) {
     return { success: true };
   } catch (e) {
     return { error: e.message };
+  }
+}
+
+// ─── Auto-Pilot Toggle ──────────────────────────────────────────────────────
+async function toggleAutopilot(enabled, intervalSec) {
+  autopilotEnabled = enabled;
+  await loadSettings();
+
+  // Persist the preference
+  currentSettings.autopilotEnabled = enabled;
+  if (intervalSec) currentSettings.autopilotIntervalSec = intervalSec;
+  await chrome.storage.local.set({ settings: currentSettings });
+
+  // Tell the content script to start/stop
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab) {
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: enabled ? 'AUTOPILOT_START' : 'AUTOPILOT_STOP',
+        intervalSec: intervalSec || currentSettings.autopilotIntervalSec || 30,
+      });
+    } catch (e) {
+      // Content script not ready
+    }
+  }
+
+  broadcastToSidebar({
+    type: 'AUTOPILOT_STATUS_CHANGED',
+    enabled,
+  });
+
+  return { enabled };
+}
+
+// ─── Auto-Pilot Tick Handler ─────────────────────────────────────────────────
+async function handleAutopilotTick(message, sender) {
+  if (!autopilotEnabled) return { skipped: true };
+  if (isProcessing) return { queued: true };
+  if (!apiInstance) return { error: 'No API key configured' };
+
+  const data = message.data;
+  if (!data) return { error: 'No data' };
+
+  isProcessing = true;
+
+  try {
+    await loadSettings();
+
+    // Capture screenshot
+    let imageData = null;
+    try {
+      imageData = await chrome.tabs.captureVisibleTab(null, {
+        format: 'png',
+        quality: 80,
+      });
+    } catch (e) {
+      // Tab not capturable
+    }
+
+    // Build the auto-pilot prompt
+    const parts = [];
+
+    parts.push('Please assist with the task at hand.');
+
+    // If user has highlighted text, that's the primary signal
+    if (data.recentSelections?.length > 0) {
+      parts.push('\n--- User Highlighted Text (most recent = highest priority) ---');
+      // Most recent first
+      const reversed = [...data.recentSelections].reverse();
+      reversed.forEach((sel, i) => {
+        parts.push(`\n[Selection ${i + 1}] (${sel.ago}):`);
+        parts.push(`"${sel.text}"`);
+        if (sel.context) parts.push(`Context: ${sel.context}`);
+      });
+      parts.push('\n(The user highlighted this text to signal what they need help with. Focus on this.)');
+    }
+
+    // Page context
+    parts.push(`\n--- Page: ${data.pageTitle || 'Unknown'} ---`);
+    parts.push(`URL: ${data.pageUrl || ''}`);
+    if (data.pageChanged) {
+      parts.push('(Page content has changed since last check)');
+    }
+
+    // Include page text (trimmed)
+    if (data.pageText) {
+      parts.push(`\n--- Visible Page Content ---\n${data.pageText.substring(0, 3000)}`);
+    }
+
+    // Instructions
+    parts.push('\n--- Instructions ---');
+    if (data.recentSelections?.length > 0) {
+      parts.push('The user has highlighted specific text on the page. This is their way of telling you what they need help with WITHOUT interacting with the extension directly. Provide a helpful, detailed response focused on the highlighted content. If it looks like a question, answer it. If it looks like a problem or code, solve it. If it looks like content to study, explain it.');
+    } else {
+      parts.push('If none is obvious, provide information about the screenshot and page content. If there are questions visible, answer them. If there is educational content, summarize key points.');
+    }
+
+    const promptBuilder = new PromptBuilder(currentSettings);
+    const messages = promptBuilder.buildMessages(
+      parts.join('\n'),
+      autopilotHistory,
+      imageData
+    );
+
+    // Notify sidebar that auto-pilot is thinking
+    broadcastToSidebar({
+      type: 'AUTOPILOT_THINKING',
+      selections: data.recentSelections?.length || 0,
+      pageTitle: data.pageTitle,
+    });
+
+    let fullResponse = '';
+    const response = await apiInstance.chat(messages, {
+      stream: true,
+      onToken: (token) => {
+        fullResponse += token;
+        broadcastToSidebar({
+          type: 'LLM_TOKEN',
+          token,
+          partial: fullResponse,
+          isAutopilot: true,
+        });
+      },
+    });
+
+    fullResponse = response.content || fullResponse;
+
+    // Store in auto-pilot history (separate from main conversation)
+    const userSummary = data.recentSelections?.length > 0
+      ? `[Auto-pilot] User highlighted: "${data.recentSelections[data.recentSelections.length - 1].text.substring(0, 200)}"`
+      : `[Auto-pilot] Page scan: ${data.pageTitle}`;
+
+    autopilotHistory.push(
+      { role: 'user', content: userSummary },
+      { role: 'assistant', content: fullResponse }
+    );
+
+    // Keep auto-pilot history shorter
+    if (autopilotHistory.length > 20) {
+      autopilotHistory = autopilotHistory.slice(-14);
+    }
+
+    broadcastToSidebar({
+      type: 'AUTOPILOT_COMPLETE',
+      content: fullResponse,
+      selections: data.recentSelections?.length || 0,
+    });
+
+    return { success: true };
+  } catch (err) {
+    broadcastToSidebar({ type: 'AUTOPILOT_ERROR', error: err.message });
+    return { error: err.message };
+  } finally {
+    isProcessing = false;
   }
 }
 
