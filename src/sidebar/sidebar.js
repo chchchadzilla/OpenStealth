@@ -42,7 +42,17 @@ let isHumanTyping = false;  // Whether the typer is active
 
 // ─── Init ────────────────────────────────────────────────────────────────────
 async function init() {
-  settings = await sendMessage({ type: 'GET_SETTINGS' }) || {};
+  console.log('[Sidebar] init start');
+  
+  try {
+    settings = await sendMessage({ type: 'GET_SETTINGS' }) || {};
+  } catch (e) {
+    console.error('[Sidebar] Failed to get settings from background:', e);
+    setStatus('error', 'Cannot reach background — reload extension');
+    return;
+  }
+  
+  console.log('[Sidebar] settings loaded, apiKey:', settings.apiKey ? 'SET' : 'MISSING', 'model:', settings.model);
   
   if (settings.model) {
     modelName.textContent = settings.model.split('/').pop();
@@ -57,6 +67,7 @@ async function init() {
 
   // Load auto-pilot state
   const apStatus = await sendMessage({ type: 'AUTOPILOT_GET_STATUS' });
+  console.log('[Sidebar] autopilot status:', apStatus);
   autopilotActive = apStatus?.enabled || false;
   btnAutopilot.classList.toggle('active', autopilotActive);
   if (autopilotActive) {
@@ -444,20 +455,33 @@ btnScreenshot.addEventListener('click', async () => {
 // ─── Type-It: Text Selection Detection ──────────────────────────────────────
 // When the user highlights text inside an AI response, show the Type-It bar.
 let selectionDebounceId = null;
+let typeItJustShown = false; // Guard: prevents reflow-triggered selectionchange from hiding bar
 
 document.addEventListener('selectionchange', () => {
   // Debounce to prevent flicker from rapid selection changes / layout reflows
   clearTimeout(selectionDebounceId);
   selectionDebounceId = setTimeout(() => {
     handleSelectionChange();
-  }, 150);
+  }, 200);
 });
 
 function handleSelectionChange() {
   const sel = window.getSelection();
-  if (!sel || sel.isCollapsed || isHumanTyping) return;
+
+  // If we just showed the Type-It bar, ignore this selectionchange (it's reflow noise)
+  if (typeItJustShown) {
+    typeItJustShown = false;
+    console.log('[Sidebar] selectionchange ignored (reflow guard)');
+    return;
+  }
+
+  if (!sel || sel.isCollapsed || isHumanTyping) {
+    console.log('[Sidebar] selectionchange: no selection or collapsed or typing');
+    return;
+  }
 
   const text = sel.toString().trim();
+  console.log('[Sidebar] selectionchange: text =', text?.substring(0, 40), 'anchorNode =', sel.anchorNode?.nodeName, 'focusNode =', sel.focusNode?.nodeName);
   if (!text) {
     // Only hide if not in pending/typing state
     if (!pendingTypeText && !isHumanTyping) {
@@ -476,18 +500,30 @@ function handleSelectionChange() {
 
   const anchor = findAssistantContent(sel.anchorNode);
   const focus = findAssistantContent(sel.focusNode);
+  console.log('[Sidebar] assistant content check: anchor =', !!anchor, 'focus =', !!focus);
 
   if (anchor || focus) {
+    // Capture the text BEFORE any DOM changes that could collapse the selection
+    const selectedText = text;
+
+    // Set the guard so the reflow-triggered selectionchange is ignored
+    typeItJustShown = true;
+
     // Show the Type-It bar with the text preview
     typeItBar.classList.remove('hidden');
     btnTypeIt.classList.remove('hidden');
     btnTypeStart.classList.add('hidden');
     btnTypeStop.classList.add('hidden');
-    const preview = text.length > 60 ? text.substring(0, 57) + '...' : text;
+    const preview = selectedText.length > 60 ? selectedText.substring(0, 57) + '...' : selectedText;
     typeItText.textContent = `"${preview}"`;
     typeItIcon.textContent = '✍️';
     // Store for later
-    typeItBar.dataset.selectedText = text;
+    typeItBar.dataset.selectedText = selectedText;
+  } else {
+    // Selection is outside assistant messages — hide bar (unless pending)
+    if (!pendingTypeText && !isHumanTyping) {
+      typeItBar.classList.add('hidden');
+    }
   }
 }
 

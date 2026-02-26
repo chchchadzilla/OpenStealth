@@ -91,6 +91,9 @@ loadSettings().catch(() => {});
 
 // ─── Message Router ─────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  // Log all incoming messages for diagnostics (SW console only — invisible to page)
+  console.log('[OpenStealth] MSG:', message.type, message.type === 'AUTOPILOT_TICK' ? '(tick)' : '');
+
   handleMessage(message, sender).then(sendResponse).catch(err => {
     console.error('[OpenStealth] Message handler error:', err);
     sendResponse({ error: err.message });
@@ -161,6 +164,8 @@ async function handleMessage(message, sender) {
       return await toggleAutopilot(message.enabled, message.intervalSec);
 
     case 'AUTOPILOT_GET_STATUS':
+      // Ensure we have the latest from storage (SW may have just restarted)
+      await loadSettings();
       return { enabled: autopilotEnabled };
 
     // ── Get active tab info ──
@@ -272,6 +277,7 @@ async function handleSidebarQuery(message) {
   if (!apiInstance) return { error: 'No API key configured. Go to Settings.' };
 
   await loadSettings();
+  console.log('[OpenStealth] SIDEBAR_QUERY:', { screenshot: message.includeScreenshot, pageCtx: message.includePageContext, query: message.query?.substring(0, 50) });
 
   isProcessing = true;
   try {
@@ -280,19 +286,29 @@ async function handleSidebarQuery(message) {
     let imageData = null;
     if (message.includeScreenshot) {
       try {
-        imageData = await chrome.tabs.captureVisibleTab(null, {
-          format: 'png',
-          quality: 80,
-        });
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) {
+          broadcastToSidebar({
+            type: 'LLM_TOKEN',
+            token: '',
+            partial: '⚠️ No active tab found for screenshot.\n\n',
+          });
+        } else {
+          imageData = await chrome.tabs.captureVisibleTab(null, {
+            format: 'jpeg',
+            quality: 70,
+          });
+        }
       } catch (e) {
         // Notify sidebar that screenshot capture failed
         broadcastToSidebar({
           type: 'LLM_TOKEN',
           token: '',
-          partial: '⚠️ Screenshot capture failed — analyzing text only.\n\n',
+          partial: `⚠️ Screenshot capture failed (${e.message || 'unknown error'}) — analyzing text only.\n\n`,
         });
       }
     }
+    console.log('[OpenStealth] Screenshot result:', imageData ? `captured (${imageData.length} chars)` : 'none');
 
     // Fetch fresh page context if requested
     let pageContext = lastPageContext;
@@ -379,6 +395,8 @@ async function executeHumanAction(message, sender) {
 
 // ─── Auto-Pilot Toggle ──────────────────────────────────────────────────────
 async function toggleAutopilot(enabled, intervalSec) {
+  console.log('[OpenStealth] toggleAutopilot:', enabled, 'interval:', intervalSec);
+
   // Persist FIRST so loadSettings reads the correct value
   const { settings } = await chrome.storage.local.get('settings');
   const updated = settings || {};
@@ -388,6 +406,7 @@ async function toggleAutopilot(enabled, intervalSec) {
 
   // Now reload — this will set autopilotEnabled from the freshly saved value
   await loadSettings();
+  console.log('[OpenStealth] After loadSettings, autopilotEnabled =', autopilotEnabled);
 
   // Tell the content script to start/stop
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -412,6 +431,11 @@ async function toggleAutopilot(enabled, intervalSec) {
 
 // ─── Auto-Pilot Tick Handler ─────────────────────────────────────────────────
 async function handleAutopilotTick(message, sender) {
+  // Rehydrate settings FIRST — the SW may have restarted since the last tick
+  // and autopilotEnabled will still be its declared default (false).
+  await loadSettings();
+  console.log('[OpenStealth] TICK received, autopilotEnabled =', autopilotEnabled, 'isProcessing =', isAutopilotProcessing, 'hasAPI =', !!apiInstance);
+
   // Always notify sidebar of the tick for countdown reset
   broadcastToSidebar({
     type: 'AUTOPILOT_TICK_RECEIVED',
@@ -431,17 +455,16 @@ async function handleAutopilotTick(message, sender) {
   isAutopilotProcessing = true;
 
   try {
-    await loadSettings();
 
     // Capture screenshot
     let imageData = null;
     try {
       imageData = await chrome.tabs.captureVisibleTab(null, {
-        format: 'png',
-        quality: 80,
+        format: 'jpeg',
+        quality: 70,
       });
     } catch (e) {
-      // Tab not capturable
+      // Tab not capturable — continue without screenshot
     }
 
     // Build the auto-pilot prompt
