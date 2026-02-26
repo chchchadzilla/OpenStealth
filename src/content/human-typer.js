@@ -40,6 +40,25 @@
   let abortController = null;
   let targetElement = null;
   let expectedValue = ''; // What the value SHOULD be at each step
+  let lastFocusedInput = null; // Track the last input the user focused on the PAGE
+
+  // ─── Last-Focused Input Tracker ───────────────────────────────────────────
+  // When the user clicks "▶ Start" in the sidebar, browser focus moves to the
+  // sidebar panel, so document.activeElement in the page becomes <body>.
+  // We pre-record the last legitimate input element the user focused so we
+  // can type into it even after the sidebar steals focus.
+  function isValidTypingTarget(el) {
+    if (!el || el === document.body || el === document.documentElement) return false;
+    if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  document.addEventListener('focusin', (e) => {
+    if (isValidTypingTarget(e.target)) {
+      lastFocusedInput = e.target;
+    }
+  }, true);
 
   // ─── Random helpers ───────────────────────────────────────────────────────
   function rand(min, max) {
@@ -390,11 +409,15 @@
   chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     if (msg.type === 'HUMAN_TYPE_START') {
-      // Start typing the provided text at wherever the cursor currently is
-      const el = document.activeElement;
+      // Try activeElement first (if user managed to keep focus on page),
+      // then fall back to last tracked input element.
+      let el = document.activeElement;
+      if (!isValidTypingTarget(el)) {
+        el = lastFocusedInput;
+      }
 
-      if (!el || (el.tagName !== 'TEXTAREA' && el.tagName !== 'INPUT' && !el.isContentEditable)) {
-        sendResponse({ error: 'No text input focused. Click into an input field first.' });
+      if (!el || !isValidTypingTarget(el)) {
+        sendResponse({ error: 'No text input focused. Click into an input field on the page first, then click ▶ Start.' });
         return true;
       }
 
@@ -404,6 +427,9 @@
       }
 
       sendResponse({ success: true, element: el.tagName });
+
+      // Re-focus the element (it may have lost focus when user clicked the sidebar)
+      el.focus();
 
       // Start asynchronously
       typeHumanly(el, msg.text);

@@ -79,8 +79,15 @@ async function loadSettings() {
   if (currentSettings.apiKey) {
     apiInstance = new OpenRouterAPI(currentSettings.apiKey, currentSettings);
   }
+  // Sync runtime autopilot state from persisted settings
+  autopilotEnabled = !!currentSettings.autopilotEnabled;
   return currentSettings;
 }
+
+// ─── Eager Init ─────────────────────────────────────────────────────────────
+// On every service worker wake (install, update, alarm, message), rehydrate
+// in-memory state from storage so autopilot/other flags survive SW restarts.
+loadSettings().catch(() => {});
 
 // ─── Message Router ─────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -165,6 +172,7 @@ async function handleMessage(message, sender) {
     case 'HUMAN_TYPE_COMPLETE':
     case 'HUMAN_TYPE_STOPPED':
     case 'HUMAN_TYPE_ERROR':
+    case 'AUTO_CHANGE_DETECTED':
       broadcastToSidebar(message);
       return { relayed: true };
 
@@ -530,6 +538,28 @@ function broadcastToSidebar(message) {
 }
 
 // ─── Context Menu ────────────────────────────────────────────────────────────
+
+// ─── Tab Activation: resume auto-pilot on new/active tabs ────────────────────
+chrome.tabs.onActivated.addListener(async ({ tabId }) => {
+  if (!autopilotEnabled) return;
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'AUTOPILOT_START',
+      intervalSec: currentSettings.autopilotIntervalSec || 30,
+    });
+  } catch (_) { /* content script not ready yet */ }
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
+  if (changeInfo.status !== 'complete' || !autopilotEnabled) return;
+  try {
+    await chrome.tabs.sendMessage(tabId, {
+      type: 'AUTOPILOT_START',
+      intervalSec: currentSettings.autopilotIntervalSec || 30,
+    });
+  } catch (_) { /* content script not ready yet */ }
+});
+
 chrome.contextMenus?.create?.({
   id: 'openstealth-query',
   title: 'Ask OpenStealth about this',

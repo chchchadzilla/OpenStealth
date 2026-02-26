@@ -211,6 +211,9 @@ html, body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius) var(--radius) var(--radius) var(--radius-sm);
   margin-right: 8px;
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
 }
 
 .message.system .message-content {

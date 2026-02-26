@@ -456,11 +456,15 @@ document.addEventListener('selectionchange', () => {
     return;
   }
 
-  // Check if selection is within a message-content div (AI response)
-  const anchor = sel.anchorNode?.parentElement?.closest?.('.message.assistant .message-content')
-              || sel.anchorNode?.closest?.('.message.assistant .message-content');
-  const focus = sel.focusNode?.parentElement?.closest?.('.message.assistant .message-content')
-             || sel.focusNode?.closest?.('.message.assistant .message-content');
+  // Walk up from anchor/focus nodes to find .message.assistant .message-content
+  // Text nodes don't have .closest(), so always start from the parent element.
+  function findAssistantContent(node) {
+    const el = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    return el?.closest?.('.message.assistant .message-content') || null;
+  }
+
+  const anchor = findAssistantContent(sel.anchorNode);
+  const focus = findAssistantContent(sel.focusNode);
 
   if (anchor || focus) {
     // Show the Type-It bar with the text preview

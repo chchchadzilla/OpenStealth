@@ -11,10 +11,10 @@
 
   // ─── Config ──────────────────────────────────────────────────────────────
   const CONFIG = {
-    DEBOUNCE_MS: 2000,
-    MIN_TEXT_CHANGE_RATIO: 0.25,       // 25% of visible text must change
-    MIN_TEXT_LENGTH: 50,                // Minimum chars to consider "meaningful"
-    MUTATION_BATCH_MS: 500,            // Batch mutations for this long
+    DEBOUNCE_MS: 1000,
+    MIN_TEXT_CHANGE_RATIO: 0.05,       // 5% of visible text must change
+    MIN_TEXT_LENGTH: 30,                // Minimum chars to consider "meaningful"
+    MUTATION_BATCH_MS: 300,            // Batch mutations for this long
     IGNORE_TAGS: new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'META', 'LINK', 'BR', 'HR']),
     SLIDESHOW_SELECTORS: [
       '.slide', '.swiper-slide', '.carousel-item', '.slick-slide',
@@ -264,7 +264,7 @@
 
   function processMutationBatch() {
     const batch = mutationBatch.splice(0);
-    if (batch.length < 3) return; // Too few mutations to be meaningful
+    if (batch.length === 0) return; // Only skip truly empty batches
 
     // Debounce the actual change detection
     clearTimeout(debounceTimer);
