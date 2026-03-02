@@ -18,6 +18,8 @@
 
 [Getting Started](#-getting-started) · [How It Works](#-how-it-works) · [Configuration](#%EF%B8%8F-configuration-reference) · [Contributing](#-contributing)
 
+Like my projects? **Buy Me A Coffee** *https://buymeacoffee.com/chadpkeith* 
+
 </div>
 
 ---
